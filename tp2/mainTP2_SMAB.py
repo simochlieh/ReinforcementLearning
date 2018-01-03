@@ -1,49 +1,41 @@
 import numpy as np
-import arms
-import matplotlib.pyplot as plt
+import math
+from tqdm import tqdm
 
-# Build your own bandit problem
 
-random_state = np.random.randint(1, 312414)
+def get_complexity(mab, mu_max):
+    result = 0
+    for arm in mab:
+        if arm.mean < mu_max:
+            result += (mu_max - arm.mean) / kl(arm.mean, mu_max)
 
-# this is an example, please change the parameters or arms!
-arm1 = arms.ArmBernoulli(0.30, random_state=random_state)
-arm2 = arms.ArmBernoulli(0.25, random_state=random_state)
-arm3 = arms.ArmBernoulli(0.20, random_state=random_state)
-arm4 = arms.ArmBernoulli(0.10, random_state=random_state)
+    return result
 
-MAB = [arm1, arm2, arm3, arm4]
 
-# bandit : set of arms
+def oracle(t, mab, mu_max):
+    return get_complexity(mab, mu_max) * math.log(t)
 
-nb_arms = len(MAB)
-means = [el.mean for el in MAB]
 
-# Display the means of your bandit (to find the best)
-print('means: {}'.format(means))
-mu_max = np.max(means)
+def kl(x, y):
+    return x * math.log(x / y) + (1. - x) * math.log((1. - x) / (1. - y))
 
-# Comparison of the regret on one run of the bandit algorithm
-# try to run this multiple times, you should observe different results
 
-T = 5000  # horizon
+def get_expected_regret(UCB1, TS, NS, T, nb_iter, mu_max):
+    reg1 = np.zeros((nb_iter, T))
+    reg2 = np.zeros((nb_iter, T))
+    reg3 = np.zeros((nb_iter, T))
+    for n in tqdm(xrange(nb_iter), desc='Running all 3 MAB algorithms for %d iterations' % nb_iter):
+        rew1, draws1 = UCB1.run()
+        reg1[n, :] = mu_max * np.arange(1, T + 1) - np.cumsum(rew1)
+        rew2, draws2 = TS.run()
+        reg2[n, :] = mu_max * np.arange(1, T + 1) - np.cumsum(rew2)
 
-rew1, draws1 = UCB1(T, MAB)
-reg1 = mu_max * np.arange(1, T + 1) - np.cumsum(rew1)
-rew2, draws2 = TS(T, MAB)
-reg2 = mu_max * np.arange(1, T + 1) - np.cumsum(rew2)
+        # reg3 = naive strategy
 
-# reg3 = naive strategy
+        rew3, draws3 = NS.run()
+        reg3[n, :] = mu_max * np.arange(1, T + 1) - np.cumsum(rew3)
+    mean_reg_UCB1 = reg1.mean(axis=0)
+    mean_reg_TS = reg2.mean(axis=0)
+    mean_reg_NS = reg3.mean(axis=0)
 
-# add oracle t -> C(p)log(t)
-
-plt.figure(1)
-x = np.arange(1, T+1)
-plt.plot(x, reg1, label='UCB')
-plt.plot(x, reg2, label='Thompson')
-plt.xlabel('Rounds')
-plt.ylabel('Cumulative Regret')
-
-plt.show()
-
-# (Expected) regret curve for UCB and Thompson Sampling
+    return mean_reg_UCB1, mean_reg_TS, mean_reg_NS
